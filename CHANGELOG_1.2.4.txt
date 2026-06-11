@@ -2,6 +2,8 @@ Jude NWN2 Outfit Creator - Version 1.2.4 Release
 
 Summary
 - Release on top of 1.2.3.
+- First official public release of Jude NWN2 Outfit Creator.
+- Earlier 1.2.x builds were pre-release and beta-tested during active development.
 - Focuses on user guidance during long workflows, Substance Painter handoff orientation, and final fitting reference visibility.
 - Verified in Blender 5.1 headless checks and user-tested before final packaging.
 
