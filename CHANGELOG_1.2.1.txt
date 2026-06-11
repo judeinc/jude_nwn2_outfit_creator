@@ -1,0 +1,35 @@
+Jude's AI to NwN2 Outfit Creator
+Version 1.2.1 Changelog
+
+Summary
+- Patch release on top of 1.2.0.
+- Adds final fitting quality-of-life controls.
+- Adds an optional vanilla body sculpting reference for HHM and HHF workflows.
+
+Step 4 Final Scale/Fit
+- Added Shift Forward and Shift Back controls.
+- Shift controls move the fitted Ai_Rig in small 0.01 increments.
+- The parented outfit mesh follows the rig, so the whole fitted output moves together.
+- If the mesh is not parented to Ai_Rig, the operator moves both the rig and mesh as a fallback.
+- Step 4 now tracks the current forward shift value and resets it to 0.000 when Restore to NWN2 Scale is run.
+- Added an in-panel reminder that users may enter Pose Mode to repose the final output before clicking Done.
+
+Step 5 Final Fitting / Sculpting
+- Added a Show Vanilla Body / Hide Vanilla Body toggle below Sculpt / Elastic Deform.
+- The toggle shows the selected profile's vanilla body as a sculpting reference:
+  - HHM shows P_HHM_CL_Body01
+  - HHF shows P_HHF_CL_Body01
+- The inactive profile body is hidden automatically.
+- Vanilla body reference objects stay hidden from render.
+- The vanilla body no longer uses Show In Front, so it behaves like normal viewport geometry.
+- The vanilla body is automatically hidden again when moving forward to:
+  - Step 5 Done
+  - Step 6 material setup/name building
+  - Step 7 bake
+  - Substance Painter handoff
+  - Step 8 cleanup
+  - MDB export
+
+Notes
+- This patch is intended to make final fitting easier for both male and female outfits.
+- The vanilla body reference is viewport-only and should not affect baking, cleanup, or export.

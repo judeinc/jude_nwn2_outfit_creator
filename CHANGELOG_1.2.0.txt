@@ -1,0 +1,76 @@
+Jude's AI to NwN2 Outfit Creator
+Version 1.2.0 Changelog
+Release date: 2026-05-21
+
+Summary
+- Adds modular HHM/HHF body profile support for male and female NWN2 outfit workflows.
+- Improves mannequin-based weight fallback behavior.
+- Improves baking reliability, AO quality, and material preview wiring.
+- Tightens MDB export naming and skeleton/profile selection rules.
+- Adds safer export and Substance Painter handoff behavior.
+
+Body Profile System
+- Added a Body Profile selector for Human Male (HHM) and Human Female (HHF).
+- Added profile-aware references for skeleton, body, boots, gloves, head, and weight mannequin.
+- Setup Scene now loads the shared support library while showing only the selected profile assets.
+- Body reference meshes and weight mannequins stay hidden unless needed by the workflow.
+- COLS objects stay hidden except during export.
+- Steps now resolve the active profile instead of assuming HHM.
+- Material/build naming now uses the selected profile token, such as P_HHM_* or P_HHF_*.
+
+Weighting and Rigging
+- Added support for profile-specific weight mannequins:
+  - NWN2_WeightMannequin_HHM
+  - NWN2_WeightMannequin_HHF
+- Auto-weight fallback now transfers weights from the hidden mannequin instead of using the old poor-quality fallback.
+- Ai_Rig is rebuilt if it belongs to a different body profile than the current workflow.
+- Ai_Rig now keeps the profile root skeleton bone, such as P_HHM_skel or P_HHF_skel, so weighted root data is preserved.
+- Step 4 scale adjustment was corrected so bigger/smaller nudges do not break the mesh/rig relationship.
+
+Baking
+- Cycles bake setup now supports machines without OptiX or CUDA.
+- Denoiser selection now safely falls back to available denoisers such as OpenImageDenoise.
+- Baking can run on CPU-only systems when no compatible GPU bake device is available.
+- The working rigged mesh is hidden from bake rays so it does not interfere with high-to-low baking.
+- AO baking was changed to a projected high-poly AO workflow:
+  - temporary AO shader is applied to HighPoly_Mesh
+  - unrelated mesh objects are hidden from the bake
+  - AO is projected onto LowPoly_Mesh UVs through an EMIT bake
+- AO is saved as a separate _AO.png map.
+- AO is wired into the material preview as a non-destructive Diffuse x AO multiply.
+- The diffuse _D.png image stays clean and is not destructively multiplied by AO.
+- Old __ao_multiply__ nodes from earlier test files are cleaned and rebuilt safely.
+- Metallic _M baking now creates/updates a floating _M node only.
+- _M is no longer connected to the Principled BSDF Metallic input.
+- Existing _M-to-Metallic links from older test scenes are removed during metallic bake.
+- _M remains available for specular/roughness conversion and Substance handoff use.
+
+Export
+- Export MDB now resolves the profile skeleton from the mesh/material/profile metadata.
+- Export selection now includes only:
+  - the export mesh
+  - the matching profile skeleton
+  - the required COLS export objects
+- Inactive profile skeletons and support meshes are not included in MDB export.
+- Object name, mesh data name, and material name are enforced to match before MDB export.
+- Blender suffixes such as .001 and .002 are stripped from export names.
+- MDB export filename now prefers the mesh/material name instead of the .blend filename.
+- During export, AO preview multiply is temporarily bypassed so the exporter reads the clean _D texture name.
+- DDS texture export behavior was restored and verified after Substance handoff changes.
+
+Substance Painter Handoff
+- Added a Substance Painter handoff export workflow before final scene cleanup.
+- Exports low-poly OBJ using the material name expected by the texture export workflow.
+- Exports handoff maps without disrupting MDB/DDS export.
+- Roughness and metallic handoff maps are preserved for Substance Painter detailing.
+- Normal map handoff is intentionally optional/unneeded because Substance Painter can generate normals well.
+
+Cleanup and Packaging
+- Step 8 cleanup removes temporary profile support assets and hidden mannequin/reference helpers.
+- Step 8 keeps the selected profile logic intact through cleanup, repository send, and export.
+- Add-on metadata updated for version 1.2.0.
+
+Notes
+- HHM and HHF use the same NWN2 bone names, but profile-specific skeleton alignment and support assets are now respected.
+- AO is currently a material preview multiply plus separate _AO texture output. It does not alter the baked _D pixels.
+- The old metallic-to-Principled-Metallic preview behavior was intentionally removed to keep the PBR view accurate.

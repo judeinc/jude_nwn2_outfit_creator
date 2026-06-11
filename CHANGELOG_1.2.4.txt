@@ -1,0 +1,43 @@
+Jude NWN2 Outfit Creator - Version 1.2.4 Release
+
+Summary
+- Release on top of 1.2.3.
+- Focuses on user guidance during long workflows, Substance Painter handoff orientation, and final fitting reference visibility.
+- Verified in Blender 5.1 headless checks and user-tested before final packaging.
+
+Workflow Progress Tracking
+- Added a workflow next-step tracker so the panel can show the user's current recommended next action.
+- Added a top panel "Next:" status line.
+- Added red next-action highlighting across the main workflow.
+- Load Starter Scene now advances the red highlight to Step 1: Identify AI Mesh.
+- Step 1 through Step 8 now advance the highlighted next button as each major operator completes.
+- Pre-setup actions now guide users through Import High Poly, Decimate, UV Unwrap, and Lock Bake Reference.
+- Step 3 and Step 5 in-progress states now highlight their Done buttons.
+- Reset Pose no longer stays red by default, so it does not compete with the actual next action.
+- Existing scenes get a fallback inferred next step when no tracker state is stored yet.
+
+Substance Painter Handoff
+- Fixed Substance handoff OBJ orientation so exported low-poly and high-poly meshes import upright in Substance Painter.
+- The Substance export path now converts Blender/NWN2 Z-up scene orientation for Substance's Y-up import behavior.
+- Internal OBJ round trips for decimation and UV unwrap were left unchanged.
+
+Final Fitting References
+- Added Show Vanilla Gloves/Boots under Step 5 Final Fitting.
+- Added a separate visibility state for vanilla gloves and boots, independent from Show Vanilla Body.
+- Gloves and boots references auto-hide when advancing to later workflow stages, matching the body reference behavior.
+- The toggle handles partially missing glove/boot reference assets with a warning instead of blocking the workflow.
+
+Testing Notes
+- Python compile check passed.
+- Blender 5.1 headless add-on register/unregister check passed.
+- Workflow tracker registration check passed.
+- Load Starter Scene was verified headless to advance the tracker to Step 1.
+- Vanilla Gloves/Boots toggle was verified headless with dummy HHM reference assets.
+- Substance handoff axis settings were verified by static assertion.
+
+Packaging Notes
+- Release zip excludes:
+  - __pycache__
+  - .pyc files
+  - .blend1 backup files
+  - temporary beta/test blend files

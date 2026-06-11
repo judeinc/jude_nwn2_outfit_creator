@@ -1,0 +1,42 @@
+Jude NWN2 Outfit Creator - Version 1.2.3 Patch
+
+Summary
+- Patch release on top of 1.2.2.
+- Focuses on repeated-session Repository stability and batch export support.
+- Verified manually by the user after completing multiple outfits and restarting a new workflow.
+
+Restore References / Repository Safety
+- Fixed Restore References for Neverwinter Nights after sending an outfit to the Repository and starting another outfit.
+- Restore now safely relinks starter/reference assets into NWN2_Working before applying visibility.
+- Visibility restore now uses a safe hide_set wrapper so objects outside the active ViewLayer cannot crash the restore process.
+- Duplicate starter rig cleanup now retargets children, Armature modifiers, and constraints to the clean base rig before removing the duplicate.
+- Restore now repairs starter body/boots/gloves/head/mannequin parenting if a previous restore orphaned them from their profile skeleton.
+- Corrected Repository safety so finished game-style outfit names such as P_HHM_CL_Body130 and P_HHM_CL_Body131 are never canonicalized into starter references.
+- Step 1 Identify AI Mesh now ignores meshes stored in NWN2_Repository and NWN2_Export while still detecting the newly imported working mesh.
+- Starter duplicate normalization is limited to true Blender duplicate names such as P_HHF_skel.001 and P_HHM_CL_Body01.001, not valid numbered outfit variants.
+
+Batch Export Repository
+- Added Batch Export Repository under Step 8.
+- Batch export shows a warning prompt before folder selection explaining that processing can take time and Blender may appear busy.
+- Batch export runs a preflight before exporting any MDB files.
+- Preflight checks for Repository meshes, COLS, matching profile skeletons, duplicate export names, mesh data, and vertex groups.
+- Texture preflight warns about missing _D / _N images and missing texconv.exe when texture export is enabled.
+- Batch export creates one folder per repository outfit inside the chosen export folder.
+- Batch export reuses the existing single MDB export path for each outfit so naming, DDS export, COLS selection, profile skeleton selection, and node/image cleanup stay consistent.
+- Batch export stops on the first export error instead of continuing through the remaining outfits.
+- Batch export restores the Export slot and keeps Repository outfits in the Repository after processing.
+
+Testing Notes
+- Restore References verified manually after a Repository workflow.
+- Repository outfits P_HHM_CL_Body130 and P_HHM_CL_Body131 were verified to survive restore unchanged.
+- Step 1 was verified to ignore Repository meshes while identifying newModel_Mesh.
+- Batch export operator registration passed in Blender 5.1.
+- Batch preflight blocks duplicate export names before export.
+- Batch preflight blocks meshes with no vertex groups before export.
+- Python compile check passed.
+
+Packaging Notes
+- Release zip excludes:
+  - __pycache__
+  - .blend1 backup files
+  - temporary beta/test blend files
