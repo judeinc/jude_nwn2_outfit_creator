@@ -4,6 +4,12 @@ Jude NWN2 Outfit Creator is a Blender 5.1+ add-on for converting AI-generated or
 
 It provides a guided, step-by-step workflow for importing meshes, creating low-poly versions, fitting and weighting them to NWN2 body profiles, baking texture maps, organizing finished outfits in a local Repository collection, and exporting `.mdb` files for use with NWN2 modding tools.
 
+## Video Demonstration
+
+[![Jude NWN2 Outfit Creator video demonstration](https://img.youtube.com/vi/ij2G52nT5i0/maxresdefault.jpg)](https://youtu.be/ij2G52nT5i0)
+
+Watch the public demonstration: [Jude NWN2 Outfit Creator on YouTube](https://youtu.be/ij2G52nT5i0)
+
 ## First Official Release
 
 Version 1.2.4 is the first official public release of the add-on.
