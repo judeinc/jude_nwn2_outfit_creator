@@ -18,9 +18,9 @@ Earlier 1.2.x builds were pre-release and beta-tested during active development.
 
 ## Current Version
 
-- Release: 1.2.4
+- Release: 1.2.4A hotfix package
 - Blender target: 5.1+
-- Status: First official public release
+- Status: First official public release with Step 4 fitting hotfix
 - Main add-on file: `__init__.py`
 
 ## What It Does
@@ -55,10 +55,20 @@ The add-on uses a modular profile registry so additional NWN2 body profiles can 
 - Kept `Show Vanilla Body` independent from gloves/boots visibility.
 - Preserved Repository safety and batch export behavior from v1.2.3.
 
+## v1.2.4A Hotfix
+
+- Fixed Step 4 restore-scale fitting adjustments so shift, vertical shift, tilt,
+  scale, and profile-shape object movement keep the weighted outfit and Ai_Rig
+  moving together as a stable fitted pair.
+- Prevented Step 4 adjustment buttons from moving Ai_Rig as a live deformer in a
+  way that could offset the armature relationship before Step 5 baking.
+- Kept the add-on version at 1.2.4 while marking the release package with an
+  `A` suffix for easy identification.
+
 ## Installation
 
 1. Download the release zip:
-   `Jude_NWN2_Outfit_Creator_v1.2.4.zip`
+   `Jude_NWN2_Outfit_Creator_v1.2.4A.zip`
 2. Open Blender 5.1 or newer.
 3. Go to `Edit > Preferences > Add-ons`.
 4. Click `Install from Disk`.
@@ -96,7 +106,8 @@ This repository includes the files needed by the add-on:
 - `judes_ai_outfit_creator_skels.blend` - starter skeleton/reference asset library
 - `UnWrapConsole3.exe` - Ministry of Flat UV unwrap helper
 - `texconv.exe` - DDS texture conversion helper
-- `CHANGELOG_1.2.4.txt` - current release notes
+- `CHANGELOG_1.2.4.txt` - first public release notes
+- `CHANGELOG_1.2.4A.txt` - current hotfix release notes
 
 ## Notes For Modders
 

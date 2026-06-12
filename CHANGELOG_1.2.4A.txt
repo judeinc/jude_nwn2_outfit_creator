@@ -1,0 +1,23 @@
+Jude NWN2 Outfit Creator v1.2.4A
+Hotfix release for v1.2.4
+
+This is a minor hotfix package for the first public v1.2.4 release. It keeps
+the add-on version at 1.2.4, but the release package is marked with an "A"
+suffix so users can tell it includes the fitting workflow fix.
+
+Fixes
+- Fixed Step 4 restore-scale fitting adjustments so shift, vertical shift,
+  tilt, scale, and profile-shape object movement keep the weighted outfit and
+  Ai_Rig moving together as a stable fitted pair.
+- Prevented Step 4 adjustment buttons from moving Ai_Rig as a live deformer in
+  a way that could offset the armature relationship before Step 5 baking.
+- Added safeguards so in-progress scenes that still have newModel_Mesh parented
+  to Ai_Rig are normalized before final fitting.
+
+Verification
+- Confirmed the add-on compiles under Python.
+- Confirmed Blender 5.1 can register and unregister the add-on.
+- Confirmed repeated Step 4 adjustment operations leave vertex-group weights
+  unchanged.
+- Confirmed the mesh-to-Ai_Rig relative transform remains stable while the pair
+  is moved into final NWN2 scale/position.

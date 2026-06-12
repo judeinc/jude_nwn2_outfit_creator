@@ -10,6 +10,8 @@ bl_info = {
 }
 
 import bpy
+import math
+import mathutils
 
 
 NWN2_BODY_PROFILES = {
@@ -398,6 +400,88 @@ def nwn2_is_workflow_next(context, *step_ids):
     return nwn2_workflow_next_step(context) in step_ids
 
 
+def nwn2_matrix_to_prop(matrix):
+    return [matrix[row][col] for row in range(4) for col in range(4)]
+
+
+def nwn2_matrix_from_prop(value):
+    vals = list(value)
+    if len(vals) != 16:
+        return mathutils.Matrix.Identity(4)
+    return mathutils.Matrix((
+        vals[0:4],
+        vals[4:8],
+        vals[8:12],
+        vals[12:16],
+    ))
+
+
+def nwn2_ensure_ai_rig_modifier(mesh_obj, ai_rig):
+    arm_mod = None
+    for mod in list(mesh_obj.modifiers):
+        if mod.type != 'ARMATURE':
+            continue
+        if mod.object == ai_rig and arm_mod is None:
+            arm_mod = mod
+        else:
+            mesh_obj.modifiers.remove(mod)
+
+    if not arm_mod:
+        arm_mod = mesh_obj.modifiers.new(name="Armature", type='ARMATURE')
+        arm_mod.object = ai_rig
+    arm_mod.use_vertex_groups = True
+    return arm_mod
+
+
+def nwn2_prepare_step4_fitted_pair(mesh_obj, ai_rig, reset_base=False):
+    if not mesh_obj or not ai_rig:
+        return
+
+    mesh_world = mesh_obj.matrix_world.copy()
+    if mesh_obj.parent == ai_rig:
+        mesh_obj.parent = None
+        mesh_obj.matrix_parent_inverse.identity()
+        mesh_obj.matrix_world = mesh_world
+
+    nwn2_ensure_ai_rig_modifier(mesh_obj, ai_rig)
+
+    if reset_base or "nwn2_step4_mesh_base_matrix" not in mesh_obj:
+        mesh_obj["nwn2_step4_mesh_base_matrix"] = nwn2_matrix_to_prop(mesh_obj.matrix_world)
+    if reset_base or "nwn2_step4_rig_base_matrix" not in ai_rig:
+        ai_rig["nwn2_step4_rig_base_matrix"] = nwn2_matrix_to_prop(ai_rig.matrix_world)
+
+
+def nwn2_apply_step4_pair_adjustments(context, mesh_obj=None, ai_rig=None):
+    mesh_obj = mesh_obj or bpy.data.objects.get("newModel_Mesh")
+    ai_rig = ai_rig or bpy.data.objects.get("Ai_Rig")
+    if not mesh_obj or not ai_rig:
+        return False
+
+    nwn2_prepare_step4_fitted_pair(mesh_obj, ai_rig)
+
+    mesh_base = nwn2_matrix_from_prop(mesh_obj["nwn2_step4_mesh_base_matrix"])
+    rig_base = nwn2_matrix_from_prop(ai_rig["nwn2_step4_rig_base_matrix"])
+    pivot = rig_base.to_translation()
+
+    scale_factor = getattr(context.scene, "nwn2_scale_adjustment", 1.0)
+    tilt_degrees = getattr(context.scene, "nwn2_tilt_adjustment", 0.0)
+    shift_y = getattr(context.scene, "nwn2_shift_adjustment", 0.0)
+    shift_z = getattr(context.scene, "nwn2_vertical_shift_adjustment", 0.0)
+
+    delta = (
+        mathutils.Matrix.Translation(mathutils.Vector((0.0, shift_y, shift_z))) @
+        mathutils.Matrix.Translation(pivot) @
+        mathutils.Matrix.Rotation(math.radians(tilt_degrees), 4, 'X') @
+        mathutils.Matrix.Scale(scale_factor, 4) @
+        mathutils.Matrix.Translation(-pivot)
+    )
+
+    ai_rig.matrix_world = delta @ rig_base
+    mesh_obj.matrix_world = delta @ mesh_base
+    context.view_layer.update()
+    return True
+
+
 # ---------------------------------------------------------------------------
 # STEP 1 — Identify AI Mesh
 # ---------------------------------------------------------------------------
@@ -500,7 +584,6 @@ class NWN2_OT_RotateMeshAround(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        import math
         mesh_obj = bpy.data.objects.get("newModel_Mesh")
         if not mesh_obj:
             self.report({'ERROR'}, "newModel_Mesh not found. Run Step 1 first.")
@@ -1244,14 +1327,7 @@ class NWN2_OT_Step4_Finalize(bpy.types.Operator):
             context.view_layer.objects.active = ai_rig
             bpy.ops.object.parent_set(type='OBJECT', keep_transform=True)
 
-        has_mod = any(m.type == 'ARMATURE' and m.object == ai_rig for m in mesh_obj.modifiers)
-        if not has_mod:
-            for mod in list(mesh_obj.modifiers):
-                if mod.type == 'ARMATURE':
-                    mesh_obj.modifiers.remove(mod)
-            arm_mod = mesh_obj.modifiers.new(name="Armature", type='ARMATURE')
-            arm_mod.object = ai_rig
-            arm_mod.use_vertex_groups = True
+        nwn2_ensure_ai_rig_modifier(mesh_obj, ai_rig)
 
         bpy.ops.object.select_all(action='DESELECT')
         ai_rig.select_set(True)
@@ -1332,8 +1408,10 @@ class NWN2_OT_Step4_Finalize(bpy.types.Operator):
         context.scene.nwn2_scale_adjustment = 1.0
         context.scene.nwn2_shift_adjustment = 0.0
         context.scene.nwn2_vertical_shift_adjustment = 0.0
+        context.scene.nwn2_tilt_adjustment = 0.0
         mesh_obj["nwn2_scale_adjust_base"] = tuple(mesh_obj.scale)
         ai_rig["nwn2_scale_adjust_base"] = tuple(ai_rig.scale)
+        nwn2_prepare_step4_fitted_pair(mesh_obj, ai_rig, reset_base=True)
 
         nwn2_set_workflow_next_step(context, "step5")
         self.report({'INFO'}, f"Ai_Rig restored to {nwn2_profile(context, mesh_obj)['label']} scale. Reference body visible for comparison.")
@@ -1353,19 +1431,18 @@ class NWN2_OT_Step4_TiltAdjust(bpy.types.Operator):
     direction: bpy.props.IntProperty(default=1)
 
     def execute(self, context):
-        import math
         mesh_obj = bpy.data.objects.get("newModel_Mesh")
         ai_rig = bpy.data.objects.get("Ai_Rig")
         if not mesh_obj:
             self.report({'ERROR'}, "newModel_Mesh not found.")
             return {'CANCELLED'}
-        angle = math.radians(0.25 * self.direction)
-        mesh_obj.rotation_euler.x += angle
-        if ai_rig:
-            ai_rig.rotation_euler.x += angle
+        if not ai_rig:
+            self.report({'ERROR'}, "Ai_Rig not found.")
+            return {'CANCELLED'}
         context.scene.nwn2_tilt_adjustment = round(
             context.scene.nwn2_tilt_adjustment + (0.25 * self.direction), 2
         )
+        nwn2_apply_step4_pair_adjustments(context, mesh_obj, ai_rig)
         self.report({'INFO'}, f"Tilt: {context.scene.nwn2_tilt_adjustment:.1f}°")
         return {'FINISHED'}
 
@@ -1379,8 +1456,6 @@ class NWN2_OT_Step4_ScaleAdjust(bpy.types.Operator):
     direction: bpy.props.IntProperty(default=1)  # +1 or -1
 
     def execute(self, context):
-        import mathutils
-
         mesh_obj = bpy.data.objects.get("newModel_Mesh")
         ai_rig = bpy.data.objects.get("Ai_Rig")
 
@@ -1391,24 +1466,12 @@ class NWN2_OT_Step4_ScaleAdjust(bpy.types.Operator):
             self.report({'ERROR'}, "Ai_Rig not found.")
             return {'CANCELLED'}
 
-        if "nwn2_scale_adjust_base" not in mesh_obj:
-            mesh_obj["nwn2_scale_adjust_base"] = tuple(mesh_obj.scale)
-        if "nwn2_scale_adjust_base" not in ai_rig:
-            ai_rig["nwn2_scale_adjust_base"] = tuple(ai_rig.scale)
-
         context.scene.nwn2_scale_adjustment = round(
             context.scene.nwn2_scale_adjustment + (0.005 * self.direction), 3
         )
         scale_factor = context.scene.nwn2_scale_adjustment
 
-        mesh_base = mathutils.Vector(mesh_obj["nwn2_scale_adjust_base"])
-        rig_base = mathutils.Vector(ai_rig["nwn2_scale_adjust_base"])
-
-        # newModel_Mesh is parented to Ai_Rig after Step 4. Scaling both creates
-        # double transforms, so keep the child mesh at its base scale and let the
-        # rig carry this fine adjustment.
-        mesh_obj.scale = tuple(mesh_base)
-        ai_rig.scale = tuple(component * scale_factor for component in rig_base)
+        nwn2_apply_step4_pair_adjustments(context, mesh_obj, ai_rig)
 
         self.report({'INFO'}, f"Scale: {scale_factor:.3f}")
         return {'FINISHED'}
@@ -1423,24 +1486,21 @@ class NWN2_OT_Step4_ShiftAdjust(bpy.types.Operator):
     direction: bpy.props.IntProperty(default=1)  # +1 forward, -1 backward
 
     def execute(self, context):
-        import mathutils
-
         mesh_obj = bpy.data.objects.get("newModel_Mesh")
         ai_rig = bpy.data.objects.get("Ai_Rig")
 
+        if not mesh_obj:
+            self.report({'ERROR'}, "newModel_Mesh not found.")
+            return {'CANCELLED'}
         if not ai_rig:
             self.report({'ERROR'}, "Ai_Rig not found.")
             return {'CANCELLED'}
 
         step = 0.01 * self.direction
-        offset = mathutils.Vector((0.0, step, 0.0))
-        ai_rig.location += offset
-        if mesh_obj and mesh_obj.parent != ai_rig:
-            mesh_obj.location += offset
-
         context.scene.nwn2_shift_adjustment = round(
             context.scene.nwn2_shift_adjustment + step, 3
         )
+        nwn2_apply_step4_pair_adjustments(context, mesh_obj, ai_rig)
         self.report({'INFO'}, f"Forward shift: {context.scene.nwn2_shift_adjustment:.3f}")
         return {'FINISHED'}
 
@@ -1454,24 +1514,21 @@ class NWN2_OT_Step4_VerticalShiftAdjust(bpy.types.Operator):
     direction: bpy.props.IntProperty(default=1)  # +1 up, -1 down
 
     def execute(self, context):
-        import mathutils
-
         mesh_obj = bpy.data.objects.get("newModel_Mesh")
         ai_rig = bpy.data.objects.get("Ai_Rig")
 
+        if not mesh_obj:
+            self.report({'ERROR'}, "newModel_Mesh not found.")
+            return {'CANCELLED'}
         if not ai_rig:
             self.report({'ERROR'}, "Ai_Rig not found.")
             return {'CANCELLED'}
 
         step = 0.01 * self.direction
-        offset = mathutils.Vector((0.0, 0.0, step))
-        ai_rig.location += offset
-        if mesh_obj and mesh_obj.parent != ai_rig:
-            mesh_obj.location += offset
-
         context.scene.nwn2_vertical_shift_adjustment = round(
             context.scene.nwn2_vertical_shift_adjustment + step, 3
         )
+        nwn2_apply_step4_pair_adjustments(context, mesh_obj, ai_rig)
         self.report({'INFO'}, f"Vertical shift: {context.scene.nwn2_vertical_shift_adjustment:.3f}")
         return {'FINISHED'}
 
@@ -1483,7 +1540,6 @@ class NWN2_OT_Step4_ProfileShape(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        import math
         import mathutils
 
         mesh_obj = bpy.data.objects.get("newModel_Mesh")
@@ -1504,24 +1560,14 @@ class NWN2_OT_Step4_ProfileShape(bpy.types.Operator):
 
         target_tilt = preset.get("tilt_degrees")
         if target_tilt is not None:
-            target_angle = math.radians(target_tilt)
-            delta = target_angle - ai_rig.rotation_euler.x
-            if abs(delta) > 0.000001:
-                ai_rig.rotation_euler.x += delta
-                if mesh_obj:
-                    mesh_obj.rotation_euler.x += delta
-                context.scene.nwn2_tilt_adjustment = round(target_tilt, 2)
+            context.scene.nwn2_tilt_adjustment = round(target_tilt, 2)
 
         target_shift = preset.get("forward_shift")
         if target_shift is not None:
-            current_shift = getattr(context.scene, "nwn2_shift_adjustment", 0.0)
-            delta = target_shift - current_shift
-            if abs(delta) > 0.000001:
-                offset = mathutils.Vector((0.0, delta, 0.0))
-                ai_rig.location += offset
-                if mesh_obj and mesh_obj.parent != ai_rig:
-                    mesh_obj.location += offset
-                context.scene.nwn2_shift_adjustment = round(target_shift, 3)
+            context.scene.nwn2_shift_adjustment = round(target_shift, 3)
+
+        if target_tilt is not None or target_shift is not None:
+            nwn2_apply_step4_pair_adjustments(context, mesh_obj, ai_rig)
 
         bpy.ops.object.select_all(action='DESELECT')
         ai_rig.select_set(True)
@@ -1569,6 +1615,17 @@ class NWN2_OT_Step5_FinalFitting(bpy.types.Operator):
         if not ai_rig:
             self.report({'ERROR'}, "Ai_Rig not found.")
             return {'CANCELLED'}
+
+        mesh_obj = bpy.data.objects.get("newModel_Mesh")
+        if mesh_obj:
+            if context.mode != 'OBJECT':
+                bpy.ops.object.mode_set(mode='OBJECT')
+            has_ai_rig_mod = any(
+                mod.type == 'ARMATURE' and mod.object == ai_rig
+                for mod in mesh_obj.modifiers
+            )
+            if mesh_obj.parent == ai_rig or has_ai_rig_mod:
+                nwn2_prepare_step4_fitted_pair(mesh_obj, ai_rig)
 
         # Ensure Ai_Rig is visible and active regardless of current mode
         ai_rig.hide_viewport = False
