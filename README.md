@@ -18,9 +18,9 @@ Earlier 1.2.x builds were pre-release and beta-tested during active development.
 
 ## Current Version
 
-- Release: 1.2.4A hotfix package
+- Release: 1.3.0
 - Blender target: 5.1+
-- Status: First official public release with Step 4 fitting hotfix
+- Status: Current public release with robe/dress weighting, MDB texture flags, and guided sub-step tracking
 - Main add-on file: `__init__.py`
 
 ## What It Does
@@ -65,10 +65,29 @@ The add-on uses a modular profile registry so additional NWN2 body profiles can 
 - Kept the add-on version at 1.2.4 while marking the release package with an
   `A` suffix for easy identification.
 
+## v1.3.0 Release
+
+- Added Human Male and Human Female robe/dress donor bodies to the bundled
+  starter blend.
+- Added a `Dress / Robe Model` Step 3 checkbox for robe and dress outfits.
+- Made profile body/reference donor transfer the primary weighting path, with
+  skeleton heat weighting as a warning-only fallback.
+- Added visible warning text when skeleton fallback weighting is used.
+- Added MDB texture flag checkboxes in Step 8, including Alpha Test, Alpha
+  Blend, Additive Blend, Environment Mapping, Cutscene Mesh, Glow, No Cast
+  Shadows, and Projected Textures.
+- Alpha Test and Alpha Blend are checked by default.
+- Added post-export MDB flag patching so exported SKIN/RIGD material packets
+  carry the selected flags automatically.
+- Improved the guided workflow so Pre-Setup is highlighted before Step 1:
+  Import High Poly, Decimate, UV Unwrap, Lock Reference, then Step 1.
+- Added sub-step tracking and red highlighting for Step 4 and Step 5 fitting
+  controls.
+
 ## Installation
 
 1. Download the release zip:
-   `Jude_NWN2_Outfit_Creator_v1.2.4A.zip`
+   `Jude_NWN2_Outfit_Creator_v1.3.0.zip`
 2. Open Blender 5.1 or newer.
 3. Go to `Edit > Preferences > Add-ons`.
 4. Click `Install from Disk`.
@@ -107,7 +126,8 @@ This repository includes the files needed by the add-on:
 - `UnWrapConsole3.exe` - Ministry of Flat UV unwrap helper
 - `texconv.exe` - DDS texture conversion helper
 - `CHANGELOG_1.2.4.txt` - first public release notes
-- `CHANGELOG_1.2.4A.txt` - current hotfix release notes
+- `CHANGELOG_1.2.4A.txt` - fitting hotfix release notes
+- `CHANGELOG_1.3.0.txt` - current release notes
 
 ## Notes For Modders
 

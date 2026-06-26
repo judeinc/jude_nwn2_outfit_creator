@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Jude's AI to NwN2 Outfit Creator",
     "author": "Jude / Raymond Arellano",
-    "version": (1, 2, 4),
+    "version": (1, 3, 0),
     "blender": (5, 1, 0),
     "location": "View3D > Sidebar > NWN2 Outfit, Pie: Ctrl+Alt+N",
     "description": "Step-by-step modular body workflow for converting AI meshes to Neverwinter Nights 2 outfits with rigging, baking, MDB export, and Substance Painter handoff tools.",
@@ -14,12 +14,31 @@ import math
 import mathutils
 
 
+NWN2_MDB_TEXTURE_FLAG_PROPS = [
+    ("nwn2_mdb_flag_alpha_test", "Alpha Test", 0, True),
+    ("nwn2_mdb_flag_alpha_blend", "Alpha Blend", 1, True),
+    ("nwn2_mdb_flag_additive_blend", "Additive Blend", 2, False),
+    ("nwn2_mdb_flag_environment_mapping", "Environment Mapping", 3, False),
+    ("nwn2_mdb_flag_cutscene_mesh", "Cutscene Mesh", 4, False),
+    ("nwn2_mdb_flag_glow", "Glow", 5, False),
+    ("nwn2_mdb_flag_no_cast_shadows", "No Cast Shadows", 6, False),
+    ("nwn2_mdb_flag_projected_textures", "Projected Textures", 7, False),
+]
+
+
+NWN2_MDB_MATERIAL_FLAG_OFFSETS = {
+    b"RIGD": 200,
+    b"SKIN": 232,
+}
+
+
 NWN2_BODY_PROFILES = {
     "HHM": {
         "label": "Human Male (HHM)",
         "model_token": "HHM",
         "skeleton": "P_HHM_skel",
         "body": "P_HHM_CL_Body01",
+        "robe_body": "P_HHM_CL_Body05",
         "boots": "P_HHM_CL_Boots01",
         "gloves": "P_HHM_CL_Gloves01",
         "head": "P_HHM_Head01",
@@ -30,6 +49,7 @@ NWN2_BODY_PROFILES = {
         "model_token": "HHF",
         "skeleton": "P_HHF_skel",
         "body": "P_HHF_CL_Body01",
+        "robe_body": "P_HHF_CL_Body02",
         "boots": "P_HHF_CL_Boots01",
         "gloves": "P_HHF_CL_Gloves01",
         "head": "P_HHF_Head01",
@@ -225,16 +245,20 @@ def nwn2_profile_object(context, role, obj=None):
 def nwn2_profile_asset_names():
     names = set()
     for profile in NWN2_BODY_PROFILES.values():
-        for role in ("skeleton", "body", "boots", "gloves", "head", "mannequin"):
-            names.add(profile[role])
+        for role in ("skeleton", "body", "robe_body", "boots", "gloves", "head", "mannequin"):
+            name = profile.get(role)
+            if name:
+                names.add(name)
     return names
 
 
 def nwn2_temp_profile_asset_names():
     names = set()
     for profile in NWN2_BODY_PROFILES.values():
-        for role in ("body", "boots", "gloves", "head", "mannequin"):
-            names.add(profile[role])
+        for role in ("body", "robe_body", "boots", "gloves", "head", "mannequin"):
+            name = profile.get(role)
+            if name:
+                names.add(name)
     return names
 
 
@@ -274,6 +298,62 @@ def nwn2_safe_hide_set(context, obj, hidden):
             obj.hide_set(hidden)
     except RuntimeError:
         pass
+
+
+def nwn2_mdb_texture_flags_from_scene(scene):
+    flags = 0
+    for prop_name, _label, bit_index, _default in NWN2_MDB_TEXTURE_FLAG_PROPS:
+        if getattr(scene, prop_name, False):
+            flags |= 1 << bit_index
+    return flags
+
+
+def nwn2_patch_mdb_texture_flags(filepath, flags):
+    import os
+    import struct
+
+    path = bpy.path.abspath(filepath)
+    if not os.path.isfile(path):
+        raise FileNotFoundError(os.path.basename(path))
+
+    with open(path, "rb") as handle:
+        data = bytearray(handle.read())
+
+    if len(data) < 12 or bytes(data[0:4]) != b"NWN2":
+        raise ValueError("not a valid NWN2 MDB file")
+
+    num_packets = struct.unpack_from("<I", data, 8)[0]
+    lookup_start = 12
+    lookup_size = num_packets * 8
+    if lookup_start + lookup_size > len(data):
+        raise ValueError("MDB packet table is incomplete")
+
+    patched = 0
+    visible_flags = flags & 0xFF
+    for index in range(num_packets):
+        entry_offset = lookup_start + (index * 8)
+        packet_type = bytes(data[entry_offset:entry_offset + 4])
+        relative_flag_offset = NWN2_MDB_MATERIAL_FLAG_OFFSETS.get(packet_type)
+        if relative_flag_offset is None:
+            continue
+
+        packet_offset = struct.unpack_from("<I", data, entry_offset + 4)[0]
+        flag_offset = packet_offset + relative_flag_offset
+        if packet_offset + 8 > len(data) or flag_offset + 4 > len(data):
+            continue
+        if bytes(data[packet_offset:packet_offset + 4]) != packet_type:
+            continue
+
+        current_flags = struct.unpack_from("<I", data, flag_offset)[0]
+        new_flags = (current_flags & ~0xFF) | visible_flags
+        struct.pack_into("<I", data, flag_offset, new_flags)
+        patched += 1
+
+    if patched:
+        with open(path, "wb") as handle:
+            handle.write(data)
+
+    return patched
 
 
 def nwn2_stamp_profile(obj, context=None, profile_key=None):
@@ -342,7 +422,19 @@ NWN2_WORKFLOW_STEP_LABELS = {
 }
 
 
-def nwn2_set_workflow_next_step(context, step_id):
+NWN2_WORKFLOW_SUBSTEP_LABELS = {
+    "step4_adjust": "Step 4 - Adjust scale, shift, and tilt if needed",
+    "step5_a": "Step 5A - Scale Arms",
+    "step5_b": "Step 5B - Rotate Arms Right View",
+    "step5_c_left": "Step 5C - Adjust Left Arm",
+    "step5_c_right": "Step 5C - Adjust Right Arm",
+    "step5_feet": "Step 5D - Align Feet",
+    "step5_sculpt": "Step 5E - Sculpt / Elastic Deform",
+    "step5_done": "Step 5 Done - Attach to Game Skeleton",
+}
+
+
+def nwn2_set_workflow_next_step(context, step_id, clear_substep=True):
     scene = getattr(context, "scene", None)
     if not scene:
         return
@@ -350,6 +442,28 @@ def nwn2_set_workflow_next_step(context, step_id):
         scene.nwn2_workflow_next_step = step_id
     else:
         scene["nwn2_workflow_next_step"] = step_id
+    if clear_substep:
+        nwn2_set_workflow_next_substep(context, "")
+
+
+def nwn2_set_workflow_next_substep(context, substep_id):
+    scene = getattr(context, "scene", None)
+    if not scene:
+        return
+    if hasattr(scene, "nwn2_workflow_next_substep"):
+        scene.nwn2_workflow_next_substep = substep_id
+    else:
+        scene["nwn2_workflow_next_substep"] = substep_id
+
+
+def nwn2_workflow_next_substep(context):
+    scene = getattr(context, "scene", None)
+    if not scene:
+        return ""
+    stored = getattr(scene, "nwn2_workflow_next_substep", "")
+    if not stored and hasattr(scene, "get"):
+        stored = scene.get("nwn2_workflow_next_substep", "")
+    return stored
 
 
 def nwn2_infer_workflow_next_step(context):
@@ -363,6 +477,21 @@ def nwn2_infer_workflow_next_step(context):
     if scene and getattr(scene, "nwn2_step5_active", False):
         return "step5_done"
 
+    high_poly = bpy.data.objects.get("HighPoly_Mesh")
+    low_poly = bpy.data.objects.get("newModel_Mesh")
+    locked_low_poly = bpy.data.objects.get("LowPoly_Mesh")
+
+    if not high_poly:
+        return "presetup_import_highpoly"
+    if not low_poly:
+        return "presetup_decimate"
+    if not low_poly.data.uv_layers:
+        return "presetup_uv"
+    if not locked_low_poly:
+        return "presetup_lock"
+    if scene and getattr(scene, "nwn2_mesh_front_direction", "N/A") == "N/A":
+        return "step1"
+
     export_col = bpy.data.collections.get("NWN2_Export")
     if export_col and any(obj.type == 'MESH' for obj in export_col.objects):
         return "step8_export"
@@ -371,7 +500,7 @@ def nwn2_infer_workflow_next_step(context):
     if repo_col and any(obj.type == 'MESH' for obj in repo_col.objects):
         return "step8_send_export"
 
-    mesh_obj = bpy.data.objects.get("newModel_Mesh")
+    mesh_obj = low_poly
     if not mesh_obj:
         return "step1"
 
@@ -955,8 +1084,25 @@ class NWN2_OT_Step3_Done(bpy.types.Operator):
             for group, weight in active:
                 group.add([vert.index], weight / total, 'REPLACE')
 
-    def get_weight_donor_sources(self, context, arm_obj=None):
+    def get_weight_donor_sources(self, context, arm_obj=None, prefer_profile_references=False, prefer_robe_references=False):
         profile = nwn2_profile(context, arm_obj)
+        donor_names = [profile["body"], profile["boots"], profile["gloves"]]
+        if prefer_robe_references and profile.get("robe_body"):
+            robe_donor_names = [profile["robe_body"], profile["boots"], profile["gloves"]]
+            robe_reference_donors = [
+                obj for obj in (bpy.data.objects.get(name) for name in robe_donor_names)
+                if obj and obj.type == 'MESH' and obj.vertex_groups
+            ]
+            if any(obj.name == profile["robe_body"] for obj in robe_reference_donors):
+                return robe_reference_donors
+
+        reference_donors = [
+            obj for obj in (bpy.data.objects.get(name) for name in donor_names)
+            if obj and obj.type == 'MESH' and obj.vertex_groups
+        ]
+        if prefer_profile_references and reference_donors:
+            return reference_donors
+
         custom_names = [
             profile["mannequin"],
             "WeightTransfer_Mannequin",
@@ -968,14 +1114,15 @@ class NWN2_OT_Step3_Done(bpy.types.Operator):
             if obj and obj.type == 'MESH' and obj.vertex_groups:
                 return [obj]
 
-        donor_names = [profile["body"], profile["boots"], profile["gloves"]]
-        return [
-            obj for obj in (bpy.data.objects.get(name) for name in donor_names)
-            if obj and obj.type == 'MESH' and obj.vertex_groups
-        ]
+        return reference_donors
 
-    def build_fitted_weight_donor(self, context, arm_obj):
-        sources = self.get_weight_donor_sources(context, arm_obj)
+    def build_fitted_weight_donor(self, context, arm_obj, prefer_profile_references=False, prefer_robe_references=False):
+        sources = self.get_weight_donor_sources(
+            context,
+            arm_obj,
+            prefer_profile_references,
+            prefer_robe_references
+        )
         if not sources:
             return None
 
@@ -1133,6 +1280,9 @@ class NWN2_OT_Step3_Done(bpy.types.Operator):
     def execute(self, context):
         import json
         context.scene.nwn2_step3_active = False
+        if hasattr(context.scene, "nwn2_weighting_warning"):
+            context.scene.nwn2_weighting_warning = ""
+        use_robe_weight_donor = getattr(context.scene, "nwn2_use_robe_weight_transfer", False)
 
         mesh_obj = bpy.data.objects.get("newModel_Mesh")
         ai_rig   = bpy.data.objects.get("Ai_Rig")
@@ -1159,7 +1309,19 @@ class NWN2_OT_Step3_Done(bpy.types.Operator):
             }
         context.scene.nwn2_pose_snapshot = json.dumps(pose_snapshot)
 
-        fitted_donor = self.build_fitted_weight_donor(context, ai_rig)
+        profile = nwn2_profile(context, ai_rig)
+        robe_name = profile.get("robe_body", "")
+        using_robe_donor = False
+        if use_robe_weight_donor and robe_name:
+            robe_obj = bpy.data.objects.get(robe_name)
+            using_robe_donor = bool(robe_obj and robe_obj.type == 'MESH' and robe_obj.vertex_groups)
+
+        fitted_donor = self.build_fitted_weight_donor(
+            context,
+            ai_rig,
+            prefer_profile_references=True,
+            prefer_robe_references=use_robe_weight_donor
+        )
 
         for obj in context.view_layer.objects:
             obj.select_set(False)
@@ -1170,46 +1332,52 @@ class NWN2_OT_Step3_Done(bpy.types.Operator):
         bpy.ops.pose.armature_apply(selected=False)
         bpy.ops.object.mode_set(mode='OBJECT')
 
-        self.clear_vertex_groups(mesh_obj)
-
-        for obj in context.view_layer.objects:
-            obj.select_set(False)
-        mesh_obj.select_set(True)
-        ai_rig.select_set(True)
-        context.view_layer.objects.active = ai_rig
-        bpy.ops.object.parent_set(type='ARMATURE_AUTO')
-        self.ensure_armature_binding(mesh_obj, ai_rig)
-
-        weight_method = "Blender heat weights"
-        stats = self.get_weight_stats(mesh_obj)
-
-        # Blender may return FINISHED after a bone-heat failure while leaving the
-        # mesh with empty vertex groups. Detect that and fall back to a fitted
-        # weighted mannequin/reference donor so Step 4/5 never continue unskinned.
-        if (
-            stats["total_vertices"] > 0 and
-            (
-                stats["nonzero_group_count"] == 0 or
-                stats["unweighted_count"] > stats["total_vertices"] * 0.25
+        used_skeleton_fallback = False
+        if fitted_donor and self.transfer_weights_from_donor(mesh_obj, fitted_donor, ai_rig):
+            self.ensure_armature_binding(mesh_obj, ai_rig)
+            weight_method = (
+                "profile robe donor transfer"
+                if using_robe_donor
+                else "profile body donor transfer"
             )
-        ):
-            if fitted_donor and self.transfer_weights_from_donor(mesh_obj, fitted_donor, ai_rig):
-                self.ensure_armature_binding(mesh_obj, ai_rig)
-                weight_method = "weighted mannequin transfer fallback"
-                stats = self.get_weight_stats(mesh_obj)
-            else:
+            stats = self.get_weight_stats(mesh_obj)
+        else:
+            used_skeleton_fallback = True
+            weight_method = "skeleton heat weights fallback"
+            self.clear_vertex_groups(mesh_obj)
+
+            for obj in context.view_layer.objects:
+                obj.select_set(False)
+            mesh_obj.select_set(True)
+            ai_rig.select_set(True)
+            context.view_layer.objects.active = ai_rig
+            bpy.ops.object.parent_set(type='ARMATURE_AUTO')
+            self.ensure_armature_binding(mesh_obj, ai_rig)
+
+            stats = self.get_weight_stats(mesh_obj)
+
+            # Skeleton heat weights are now the rare fallback. If Blender returns
+            # FINISHED but leaves the mesh mostly unweighted, stop here so users
+            # do not unknowingly continue with bad in-game deformation.
+            if (
+                stats["total_vertices"] > 0 and
+                (
+                    stats["nonzero_group_count"] == 0 or
+                    stats["unweighted_count"] > stats["total_vertices"] * 0.25
+                )
+            ):
                 self.remove_temp_weight_donor(fitted_donor)
                 self.report(
                     {'ERROR'},
-                    "Blender heat weights failed and no weighted mannequin/reference donor was available."
+                    "Profile body weight transfer was unavailable, and skeleton heat weights failed. Check the rig fit and try Step 3 again."
                 )
                 return {'CANCELLED'}
-        elif stats["unweighted_count"] > 0:
-            if fitted_donor and self.copy_donor_weights_to_vertices(
-                mesh_obj, fitted_donor, ai_rig, stats["unweighted_indices"]
-            ):
-                weight_method = "Blender heat weights + mannequin fill"
-            stats = self.get_weight_stats(mesh_obj)
+            elif stats["unweighted_count"] > 0:
+                if fitted_donor and self.copy_donor_weights_to_vertices(
+                    mesh_obj, fitted_donor, ai_rig, stats["unweighted_indices"]
+                ):
+                    weight_method = "skeleton heat weights fallback + donor fill"
+                stats = self.get_weight_stats(mesh_obj)
 
         # --- Post-weight cleanup: remove cross-contamination ---
         # LArm02 and LLeg1 should never share influence on the same vertex
@@ -1273,6 +1441,15 @@ class NWN2_OT_Step3_Done(bpy.types.Operator):
                 f"Auto-weight failed: {stats['unweighted_count']} vertices remain unweighted."
             )
             return {'CANCELLED'}
+
+        if used_skeleton_fallback:
+            warning = (
+                "WARNING: Step 3 had to use skeleton heat weights because no profile body donor transfer was available. "
+                "This is uncommon and can produce poor weights. Check the mesh weights before continuing; fix the fit or try again if needed."
+            )
+            if hasattr(context.scene, "nwn2_weighting_warning"):
+                context.scene.nwn2_weighting_warning = warning
+            self.report({'WARNING'}, warning)
 
         self.report(
             {'INFO'},
@@ -1414,6 +1591,7 @@ class NWN2_OT_Step4_Finalize(bpy.types.Operator):
         nwn2_prepare_step4_fitted_pair(mesh_obj, ai_rig, reset_base=True)
 
         nwn2_set_workflow_next_step(context, "step5")
+        nwn2_set_workflow_next_substep(context, "step4_adjust")
         self.report({'INFO'}, f"Ai_Rig restored to {nwn2_profile(context, mesh_obj)['label']} scale. Reference body visible for comparison.")
         return {'FINISHED'}
 
@@ -1679,6 +1857,7 @@ class NWN2_OT_Step5_FinalFitting(bpy.types.Operator):
         nwn2_set_vanilla_accessories_visible(context, False, ai_rig)
 
         nwn2_set_workflow_next_step(context, "step5_done")
+        nwn2_set_workflow_next_substep(context, "step5_a")
         self.report({'INFO'}, "Pose snapshot saved. Arm bones selected.")
         return {'FINISHED'}
 
@@ -1798,6 +1977,7 @@ class NWN2_OT_Step5_ResetPose(bpy.types.Operator):
                 pbone.rotation_euler = stored["rotation_euler"]
             pbone.scale = stored["scale"]
 
+        nwn2_set_workflow_next_substep(context, "step5_a")
         self.report({'INFO'}, "Pose reset to Step 5 start state.")
         return {'FINISHED'}
 
@@ -1858,6 +2038,7 @@ class NWN2_OT_Step5_ActionA(bpy.types.Operator):
                             space.region_3d.view_perspective = 'ORTHO'
                         break
 
+        nwn2_set_workflow_next_substep(context, "step5_b")
         self.report({'INFO'}, "Arm bones selected. Press S then Y to scale.")
         return {'FINISHED'}
 
@@ -1922,6 +2103,7 @@ class NWN2_OT_Step5_ActionB(bpy.types.Operator):
                             space.region_3d.view_perspective = 'ORTHO'
                         break
 
+        nwn2_set_workflow_next_substep(context, "step5_c_left")
         self.report({'INFO'}, "Non-arm bones hidden. Press R to rotate.")
         return {'FINISHED'}
 
@@ -1994,6 +2176,7 @@ class NWN2_OT_Step5_ActionC_Left(bpy.types.Operator):
                             space.region_3d.view_perspective = 'ORTHO'
                         break
 
+        nwn2_set_workflow_next_substep(context, "step5_c_right")
         self.report({'INFO'}, "Left arm bones selected.")
         return {'FINISHED'}
 
@@ -2066,6 +2249,7 @@ class NWN2_OT_Step5_ActionC_Right(bpy.types.Operator):
                             space.region_3d.view_perspective = 'ORTHO'
                         break
 
+        nwn2_set_workflow_next_substep(context, "step5_feet")
         self.report({'INFO'}, "Right arm bones selected.")
         return {'FINISHED'}
 
@@ -2116,6 +2300,7 @@ class NWN2_OT_Step5_ActionD(bpy.types.Operator):
                         break
 
         self.report({'INFO'}, "Sculpt Mode — Elastic Deform active with X symmetry.")
+        nwn2_set_workflow_next_substep(context, "step5_done")
         return {'FINISHED'}
 
 
@@ -2173,6 +2358,8 @@ class NWN2_OT_Step5_FootRotate(bpy.types.Operator):
         pbone.matrix = rot @ pbone.matrix
 
         self.report({'INFO'}, f"{self.bone_name} rotated {5 * self.direction}° on Z.")
+        if nwn2_workflow_next_substep(context) == "step5_feet":
+            nwn2_set_workflow_next_substep(context, "step5_sculpt")
         return {'FINISHED'}
 
 
@@ -3422,8 +3609,8 @@ class NWN2_OT_PreSetup_LoadStarter(bpy.types.Operator):
                 if not skel:
                     continue
 
-                for role in ("body", "boots", "gloves", "head", "mannequin"):
-                    obj = bpy.data.objects.get(profile[role])
+                for role in ("body", "robe_body", "boots", "gloves", "head", "mannequin"):
+                    obj = bpy.data.objects.get(profile.get(role, ""))
                     if not obj:
                         continue
 
@@ -3497,7 +3684,7 @@ class NWN2_OT_PreSetup_LoadStarter(bpy.types.Operator):
 
         if not data_to.objects:
             apply_starter_visibility()
-            nwn2_set_workflow_next_step(context, "step1")
+            nwn2_set_workflow_next_step(context, "presetup_import_highpoly")
             self.report({'INFO'}, "All starter objects already in scene.")
             return {'FINISHED'}
 
@@ -3509,7 +3696,7 @@ class NWN2_OT_PreSetup_LoadStarter(bpy.types.Operator):
                 added.append(obj.name)
 
         apply_starter_visibility()
-        nwn2_set_workflow_next_step(context, "step1")
+        nwn2_set_workflow_next_step(context, "presetup_import_highpoly")
         self.report({'INFO'}, f"Starter objects loaded/restored: {len(added)} objects.")
         return {'FINISHED'}
 
@@ -4522,6 +4709,18 @@ class NWN2_OT_Step8_Export(bpy.types.Operator):
             self.report({'ERROR'}, f"MDB export failed: {export_error}")
             return {'CANCELLED'}
 
+        try:
+            flag_patch_count = nwn2_patch_mdb_texture_flags(
+                export_path,
+                nwn2_mdb_texture_flags_from_scene(context.scene)
+            )
+        except Exception as e:
+            self.report({'ERROR'}, f"MDB exported, but texture flags could not be written: {e}")
+            return {'CANCELLED'}
+
+        if flag_patch_count == 0:
+            self.report({'WARNING'}, "MDB exported, but no SKIN/RIGD material packet was found for texture flags.")
+
         if textures_saved:
             self.report({'INFO'}, f"Exported: {mat_name}.mdb + {', '.join(textures_saved)}")
         else:
@@ -4877,11 +5076,15 @@ class NWN2_PT_MainPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         next_step = nwn2_workflow_next_step(context)
+        next_substep = nwn2_workflow_next_substep(context)
         next_label = NWN2_WORKFLOW_STEP_LABELS.get(next_step, "Continue Workflow")
+        next_sub_label = NWN2_WORKFLOW_SUBSTEP_LABELS.get(next_substep, "")
 
         box = layout.box()
         box.label(text="AI Outfit -> NwN2 Workflow", icon='ARMATURE_DATA')
         box.label(text=f"Next: {next_label}", icon='RIGHTARROW')
+        if next_sub_label:
+            box.label(text=f"Sub-step: {next_sub_label}", icon='INFO')
         pie_row = box.row()
         pie_row.scale_y = 1.4
         pie_row.operator("nwn2.open_workflow_pie", text="Open Workflow Pie (J)", icon='MENU_PANEL')
@@ -5032,6 +5235,16 @@ class NWN2_PT_MainPanel(bpy.types.Panel):
 
         layout.separator()
 
+        weighting_warning = getattr(context.scene, "nwn2_weighting_warning", "")
+        if weighting_warning:
+            warn_box = layout.box()
+            warn_box.alert = True
+            warn_box.label(text="Skeleton Weight Fallback Used", icon='ERROR')
+            warn_box.label(text="This is uncommon and may deform poorly.")
+            warn_box.label(text="Check weights before continuing.")
+            warn_box.label(text="Fix the fit or try Step 3 again if needed.")
+            layout.separator()
+
         # Step 1
         step1_box = layout.box()
         step1_header = step1_box.row()
@@ -5090,7 +5303,10 @@ class NWN2_PT_MainPanel(bpy.types.Panel):
 
             d = inst_box.box()
             d.label(text="D — When Done", icon='CHECKMARK')
-            d.label(text="Click Done below to auto-weight mesh.")
+            d.label(text="Uses profile body/reference weights first.")
+            d.prop(context.scene, "nwn2_use_robe_weight_transfer", icon='MOD_CLOTH')
+            d.label(text="Skeleton heat weights are warning-only fallback.")
+            d.label(text="Click Done below to weight mesh.")
             inst_box.separator()
 
             done_row = inst_box.row()
@@ -5113,6 +5329,7 @@ class NWN2_PT_MainPanel(bpy.types.Panel):
             scale_box = step4_box.box()
             scale_box.label(text=f"Scale Adjustment: {context.scene.nwn2_scale_adjustment:.3f}", icon='FULLSCREEN_ENTER')
             scale_row = scale_box.row(align=True)
+            scale_row.alert = next_substep == "step4_adjust"
             scale_row.scale_y = 1.3
             op_down = scale_row.operator("nwn2.step4_scale_adjust", text="- Smaller", icon='REMOVE')
             op_down.direction = -1
@@ -5122,6 +5339,7 @@ class NWN2_PT_MainPanel(bpy.types.Panel):
             shift_box = step4_box.box()
             shift_box.label(text=f"Forward Shift: {context.scene.nwn2_shift_adjustment:.3f}", icon='EMPTY_ARROWS')
             shift_row = shift_box.row(align=True)
+            shift_row.alert = next_substep == "step4_adjust"
             shift_row.scale_y = 1.3
             op_shift_back = shift_row.operator("nwn2.step4_shift_adjust", text="- Shift Back", icon='TRIA_DOWN')
             op_shift_back.direction = -1
@@ -5131,6 +5349,7 @@ class NWN2_PT_MainPanel(bpy.types.Panel):
             vertical_shift_box = step4_box.box()
             vertical_shift_box.label(text=f"Vertical Shift: {context.scene.nwn2_vertical_shift_adjustment:.3f}", icon='EMPTY_SINGLE_ARROW')
             vertical_shift_row = vertical_shift_box.row(align=True)
+            vertical_shift_row.alert = next_substep == "step4_adjust"
             vertical_shift_row.scale_y = 1.3
             op_shift_down = vertical_shift_row.operator("nwn2.step4_vertical_shift_adjust", text="- Shift Down", icon='TRIA_DOWN')
             op_shift_down.direction = -1
@@ -5143,6 +5362,7 @@ class NWN2_PT_MainPanel(bpy.types.Panel):
                 shape_box = step4_box.box()
                 shape_box.label(text=f"Profile Shape: {shape_preset['label']}", icon='OUTLINER_OB_ARMATURE')
                 shape_row = shape_box.row(align=True)
+                shape_row.alert = next_substep == "step4_adjust"
                 shape_row.scale_y = 1.3
                 shape_row.operator("nwn2.step4_profile_shape", text=f"Shape to {active_profile_key}", icon='MOD_ARMATURE')
 
@@ -5150,6 +5370,7 @@ class NWN2_PT_MainPanel(bpy.types.Panel):
             tilt_box = step4_box.box()
             tilt_box.label(text=f"Tilt Adjustment: {context.scene.nwn2_tilt_adjustment:.1f}°", icon='DRIVER_ROTATIONAL_DIFFERENCE')
             tilt_row = tilt_box.row(align=True)
+            tilt_row.alert = next_substep == "step4_adjust"
             tilt_row.scale_y = 1.3
             op_back = tilt_row.operator("nwn2.step4_tilt_adjust", text="- Tilt Back", icon='REMOVE')
             op_back.direction = 1
@@ -5176,17 +5397,26 @@ class NWN2_PT_MainPanel(bpy.types.Panel):
             inst_box.label(text="FINAL FITTING", icon='INFO')
             inst_box.separator()
 
-            inst_box.operator("nwn2.step5_action_a", text="A — Scale Arms (S then Y)", icon='FULLSCREEN_ENTER')
-            inst_box.operator("nwn2.step5_action_b", text="B — Rotate Arms Right View (R)", icon='FILE_REFRESH')
+            action_a_row = inst_box.row()
+            action_a_row.alert = next_substep == "step5_a"
+            action_a_row.operator("nwn2.step5_action_a", text="A — Scale Arms (S then Y)", icon='FULLSCREEN_ENTER')
+            action_b_row = inst_box.row()
+            action_b_row.alert = next_substep == "step5_b"
+            action_b_row.operator("nwn2.step5_action_b", text="B — Rotate Arms Right View (R)", icon='FILE_REFRESH')
 
             c_row = inst_box.row()
             c_row.label(text="C — Arms Individually:")
             c_row = inst_box.row()
             c_row.scale_y = 1.1
-            c_row.operator("nwn2.step5_action_c_left", text="◀ Left Arm", icon='TRIA_LEFT')
-            c_row.operator("nwn2.step5_action_c_right", text="Right Arm ▶", icon='TRIA_RIGHT')
+            c_left = c_row.column()
+            c_left.alert = next_substep == "step5_c_left"
+            c_left.operator("nwn2.step5_action_c_left", text="◀ Left Arm", icon='TRIA_LEFT')
+            c_right = c_row.column()
+            c_right.alert = next_substep == "step5_c_right"
+            c_right.operator("nwn2.step5_action_c_right", text="Right Arm ▶", icon='TRIA_RIGHT')
 
             e_box = inst_box.box()
+            e_box.alert = next_substep == "step5_feet"
             e_box.label(text="D — Align Feet (BLUE bones, global Z):", icon='BONE_DATA')
             lf_row = e_box.row()
             lf_row.label(text="L Foot:")
@@ -5202,7 +5432,9 @@ class NWN2_PT_MainPanel(bpy.types.Panel):
             op.bone_name = "RLegAnkle"; op.direction = -1
 
             inst_box.separator()
-            inst_box.operator("nwn2.step5_action_d", text="E — Sculpt / Elastic Deform", icon='SCULPTMODE_HLT')
+            sculpt_row = inst_box.row()
+            sculpt_row.alert = next_substep == "step5_sculpt"
+            sculpt_row.operator("nwn2.step5_action_d", text="E — Sculpt / Elastic Deform", icon='SCULPTMODE_HLT')
             vanilla_label = "Hide Vanilla Body" if context.scene.nwn2_show_vanilla_body else "Show Vanilla Body"
             inst_box.operator("nwn2.step5_toggle_vanilla_body", text=vanilla_label, icon='MESH_DATA')
             vanilla_accessories_label = (
@@ -5217,7 +5449,7 @@ class NWN2_PT_MainPanel(bpy.types.Panel):
             )
             inst_box.separator()
             done_row = inst_box.row()
-            done_row.alert = next_step == "step5_done"
+            done_row.alert = next_step == "step5_done" and (not next_substep or next_substep == "step5_done")
             done_row.scale_y = 1.5
             done_row.operator("nwn2.step5_done", icon='ARMATURE_DATA')
 
@@ -5394,6 +5626,11 @@ class NWN2_PT_MainPanel(bpy.types.Panel):
                     warn.label(text="texconv.exe not found!", icon='ERROR')
                     warn.label(text="Run Load Starter Scene to auto-download.")
                     warn.label(text="Fallback: TGA will be exported instead.")
+            flag_box = step8_box.box()
+            flag_box.label(text="Texture Flags", icon='CHECKBOX_HLT')
+            flag_grid = flag_box.grid_flow(row_major=True, columns=2, even_columns=True, even_rows=False, align=True)
+            for prop_name, label, _bit_index, _default in NWN2_MDB_TEXTURE_FLAG_PROPS:
+                flag_grid.prop(context.scene, prop_name, text=label)
             exp_row = step8_box.row()
             exp_row.alert = next_step == "step8_export"
             exp_row.scale_y = 1.5
@@ -5739,10 +5976,17 @@ def register():
     bpy.types.Scene.nwn2_presetup_expanded = bpy.props.BoolProperty(name="Pre-Setup Expanded", default=True)
     bpy.types.Scene.nwn2_mesh_front_direction = bpy.props.StringProperty(name="NWN2 Mesh Front Direction", default="N/A")
     bpy.types.Scene.nwn2_workflow_next_step = bpy.props.StringProperty(name="NWN2 Workflow Next Step", default="")
+    bpy.types.Scene.nwn2_workflow_next_substep = bpy.props.StringProperty(name="NWN2 Workflow Next Sub-step", default="")
+    bpy.types.Scene.nwn2_weighting_warning = bpy.props.StringProperty(name="NWN2 Weighting Warning", default="")
     bpy.types.Scene.nwn2_step3_active = bpy.props.BoolProperty(name="NWN2 Step 3 Active", default=False)
     bpy.types.Scene.nwn2_step5_active = bpy.props.BoolProperty(name="NWN2 Step 5 Active", default=False)
     bpy.types.Scene.nwn2_show_vanilla_body = bpy.props.BoolProperty(name="Show Vanilla Body", default=False)
     bpy.types.Scene.nwn2_show_vanilla_accessories = bpy.props.BoolProperty(name="Show Vanilla Gloves/Boots", default=False)
+    bpy.types.Scene.nwn2_use_robe_weight_transfer = bpy.props.BoolProperty(
+        name="Dress / Robe Model",
+        description="Use the active profile's robe or dress body donor first when transferring weights",
+        default=False
+    )
     bpy.types.Scene.nwn2_body_profile = bpy.props.EnumProperty(
         name="Body Profile",
         description="Select the NWN2 body skeleton/reference set for rigging and export",
@@ -5830,6 +6074,16 @@ def register():
         description="Save baked texture files to export folder alongside the .mdb",
         default=True
     )
+    for prop_name, label, _bit_index, default in NWN2_MDB_TEXTURE_FLAG_PROPS:
+        setattr(
+            bpy.types.Scene,
+            prop_name,
+            bpy.props.BoolProperty(
+                name=label,
+                description=f"Set MDB texture flag: {label}",
+                default=default
+            )
+        )
     bpy.types.Scene.nwn2_bake_resolution = bpy.props.EnumProperty(
         name="Bake Resolution",
         items=[('512','512',''),('1024','1024',''),('2048','2048',''),('4096','4096','')],
@@ -5884,9 +6138,10 @@ def unregister():
             pass
     for prop in [
         'nwn2_mesh_rotation_steps', 'nwn2_presetup_expanded', 'nwn2_mesh_front_direction',
-        'nwn2_workflow_next_step',
+        'nwn2_workflow_next_step', 'nwn2_workflow_next_substep', 'nwn2_weighting_warning',
         'nwn2_step3_active', 'nwn2_step5_active', 'nwn2_show_vanilla_body',
-        'nwn2_show_vanilla_accessories', 'nwn2_body_profile',
+        'nwn2_show_vanilla_accessories', 'nwn2_use_robe_weight_transfer',
+        'nwn2_body_profile',
         'nwn2_ai_rig_snapshot', 'nwn2_pose_snapshot', 'nwn2_step5_snapshot',
         'nwn2_material_name', 'nwn2_sex',
         'nwn2_race_human', 'nwn2_race_elf', 'nwn2_race_halforc',
@@ -5899,6 +6154,10 @@ def unregister():
         'nwn2_mof_overlap_mirrored',
         'nwn2_bake_diffuse', 'nwn2_bake_normal', 'nwn2_bake_metallic', 'nwn2_bake_ao',
         'nwn2_bake_metallic_map', 'nwn2_export_textures',
+        'nwn2_mdb_flag_alpha_test', 'nwn2_mdb_flag_alpha_blend',
+        'nwn2_mdb_flag_additive_blend', 'nwn2_mdb_flag_environment_mapping',
+        'nwn2_mdb_flag_cutscene_mesh', 'nwn2_mdb_flag_glow',
+        'nwn2_mdb_flag_no_cast_shadows', 'nwn2_mdb_flag_projected_textures',
         'nwn2_tilt_adjustment',
         'nwn2_scale_adjustment',
         'nwn2_shift_adjustment',

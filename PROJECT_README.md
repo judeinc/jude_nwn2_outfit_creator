@@ -1,12 +1,12 @@
 # Jude NWN2 Outfit Creator Project
 
 ## Current Baseline
-- Version: 1.2.4
+- Version: 1.3.0
 - Blender target: 5.1+
 - Main add-on file: `__init__.py`
 - Starter asset blend: `judes_ai_outfit_creator_skels.blend`
-- Current release changelog: `CHANGELOG_1.2.4.txt`
-- Latest packaged zip: `C:\Users\Raymond Arellano\Documents\Codex\2026-06-11\Jude_NWN2_Outfit_Creator_v1.2.4.zip`
+- Current release changelog: `CHANGELOG_1.3.0.txt`
+- Latest packaged zip: `C:\Users\Raymond Arellano\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\Jude_NWN2_Outfit_Creator_v1.3.0.zip`
 
 ## Supported Profiles
 - HHM: Human Male
@@ -22,6 +22,9 @@
 - Substance Painter handoff export
 - Repository workflow for storing multiple finished outfits in one Blender session
 - Batch Export Repository with preflight checks and one-folder-per-outfit output
+- Robe/dress donor weighting for HHM and HHF profiles
+- MDB texture flag controls and post-export flag patching
+- Main-step and sub-step workflow highlighting for guided user progress
 
 ## Important Stability Notes
 - Repository meshes must never be normalized into starter asset names.

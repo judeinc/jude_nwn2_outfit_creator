@@ -1,0 +1,66 @@
+Jude NWN2 Outfit Creator v1.3.0
+Major workflow, weighting, export, and starter asset release
+
+This release is a full version bump from v1.2.4A. It includes new robe/dress
+weight-transfer support, MDB texture flag export controls, improved guided
+workflow highlighting, and updated starter blend assets.
+
+New Features
+- Added robe/dress weight-transfer support for Human Male and Human Female
+  profiles.
+- Added new starter blend donor bodies:
+  - P_HHM_CL_Body05 for Human Male robe/dress weighting.
+  - P_HHF_CL_Body02 for Human Female robe/dress weighting.
+- Added a Dress / Robe Model checkbox in Step 3 so robe and dress outfits can
+  use the robe/dress donor body first.
+- Added MDB texture flag controls in Step 8:
+  - Alpha Test
+  - Alpha Blend
+  - Additive Blend
+  - Environment Mapping
+  - Cutscene Mesh
+  - Glow
+  - No Cast Shadows
+  - Projected Textures
+- Alpha Test and Alpha Blend are checked by default to match the common
+  MDBConfig setup.
+- Added post-export MDB flag patching for SKIN and RIGD material packets so
+  exported MDB files carry the selected texture flags automatically.
+- Added sub-step tracking for the longer guided areas of the workflow.
+- Added Step 5 sub-step red highlighting so users are guided through:
+  A Scale Arms, B Rotate Arms, C Left/Right Arms, D Feet, E Sculpt, and Done.
+- Added Step 4 adjustment sub-step highlighting for scale, shift, vertical
+  shift, profile-shape, and tilt controls.
+
+Workflow Improvements
+- Pre-Setup is now treated as an essential guided workflow path.
+- After Load Starter Scene, the next red highlight now goes to Import High Poly
+  Mesh instead of jumping directly to Step 1.
+- The guided Pre-Setup order is now:
+  Import High Poly Mesh -> Decimate & Create Low Poly -> UV Unwrap ->
+  Lock Reference -> Step 1.
+- Added a compact Sub-step status line under the main Next status line.
+- Main workflow changes now clear stale sub-step highlights.
+
+Weighting Improvements
+- Profile body/reference donor transfer is now the primary Step 3 weighting
+  path.
+- Blender skeleton heat weighting is now treated as a rare fallback.
+- Added a visible warning when skeleton heat weighting fallback is used.
+- Removed the older Has Skirt workflow assumption because profile body donors
+  are now the default weighting source.
+- Confirmed Step 4 scale/shift/tilt controls move the weighted outfit and rig
+  as a stable fitted pair after weights are transferred.
+
+Verification
+- Confirmed Python compilation with python -m py_compile __init__.py.
+- Confirmed Blender 5.1 clean register/unregister.
+- Confirmed starter blend loads the new robe/dress donor bodies.
+- Confirmed HHM robe mode selects P_HHM_CL_Body05.
+- Confirmed HHF robe mode selects P_HHF_CL_Body02.
+- Confirmed OOM/OOF safely fall back to their normal body donors.
+- Confirmed MDB texture flag defaults resolve to Alpha Test + Alpha Blend.
+- Confirmed MDB flag patching preserves unknown upper flag bits.
+- Confirmed Pre-Setup red highlighting advances through the essential setup
+  path before Step 1.
+- Confirmed Step 5 sub-step tracking advances through the fitting buttons.
