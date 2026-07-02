@@ -18,7 +18,7 @@ Earlier 1.2.x builds were pre-release and beta-tested during active development.
 
 ## Current Version
 
-- Release: 1.3.0
+- Release: 1.3.0A hotfix package
 - Blender target: 5.1+
 - Status: Current public release with robe/dress weighting, MDB texture flags, and guided sub-step tracking
 - Main add-on file: `__init__.py`
@@ -84,10 +84,20 @@ The add-on uses a modular profile registry so additional NWN2 body profiles can 
 - Added sub-step tracking and red highlighting for Step 4 and Step 5 fitting
   controls.
 
+## v1.3.0A Hotfix
+
+- Fixed Dress / Robe Model weight transfer so robe mode uses only the active
+  profile's robe donor mesh.
+- Human Male robe mode now uses only `P_HHM_CL_Body05`.
+- Human Female robe mode now uses only `P_HHF_CL_Body02`.
+- Removed boots and gloves from the robe-mode donor set so unwanted boot,
+  ankle, or foot weights are not introduced into robe/dress outfits.
+- Kept the normal non-robe weighting path unchanged.
+
 ## Installation
 
 1. Download the release zip:
-   `Jude_NWN2_Outfit_Creator_v1.3.0.zip`
+   `Jude_NWN2_Outfit_Creator_v1.3.0A.zip`
 2. Open Blender 5.1 or newer.
 3. Go to `Edit > Preferences > Add-ons`.
 4. Click `Install from Disk`.
@@ -127,7 +137,8 @@ This repository includes the files needed by the add-on:
 - `texconv.exe` - DDS texture conversion helper
 - `CHANGELOG_1.2.4.txt` - first public release notes
 - `CHANGELOG_1.2.4A.txt` - fitting hotfix release notes
-- `CHANGELOG_1.3.0.txt` - current release notes
+- `CHANGELOG_1.3.0.txt` - v1.3.0 release notes
+- `CHANGELOG_1.3.0A.txt` - current robe/dress weighting hotfix notes
 
 ## Notes For Modders
 

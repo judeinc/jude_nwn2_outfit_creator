@@ -1,0 +1,24 @@
+Jude NWN2 Outfit Creator v1.3.0A
+Hotfix release for v1.3.0
+
+This is an important robe/dress weighting hotfix for the v1.3.0 release. It
+keeps the Blender add-on version at 1.3.0, but the release package is marked
+with an "A" suffix so users can identify the corrected build.
+
+Fixes
+- Fixed Dress / Robe Model weight transfer so robe mode uses only the active
+  profile's robe donor mesh.
+- Human Male robe mode now uses only P_HHM_CL_Body05.
+- Human Female robe mode now uses only P_HHF_CL_Body02.
+- Removed boots and gloves from the robe-mode donor set so unwanted boot,
+  ankle, or foot weights are not introduced into robe/dress outfits.
+- Left the normal non-robe weighting path unchanged; it still uses body, boots,
+  and gloves donors as before.
+
+Verification
+- Confirmed Python compilation with python -m py_compile __init__.py.
+- Confirmed Blender 5.1 can load the starter scene and resolve robe donors.
+- Confirmed HHM robe donor selection returns only P_HHM_CL_Body05.
+- Confirmed HHF robe donor selection returns only P_HHF_CL_Body02.
+- Confirmed OOM/OOF continue to use their normal donor fallback behavior.
+- Confirmed robe donor vertex groups do not include ankle/foot digit groups.

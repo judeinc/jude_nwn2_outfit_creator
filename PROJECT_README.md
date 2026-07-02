@@ -5,8 +5,8 @@
 - Blender target: 5.1+
 - Main add-on file: `__init__.py`
 - Starter asset blend: `judes_ai_outfit_creator_skels.blend`
-- Current release changelog: `CHANGELOG_1.3.0.txt`
-- Latest packaged zip: `C:\Users\Raymond Arellano\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\Jude_NWN2_Outfit_Creator_v1.3.0.zip`
+- Current release changelog: `CHANGELOG_1.3.0A.txt`
+- Latest packaged zip: `C:\Users\Raymond Arellano\AppData\Roaming\Blender Foundation\Blender\5.1\scripts\addons\Jude_NWN2_Outfit_Creator_v1.3.0A.zip`
 
 ## Supported Profiles
 - HHM: Human Male
@@ -23,6 +23,7 @@
 - Repository workflow for storing multiple finished outfits in one Blender session
 - Batch Export Repository with preflight checks and one-folder-per-outfit output
 - Robe/dress donor weighting for HHM and HHF profiles
+- v1.3.0A robe mode uses only the robe donor mesh, not boots/gloves donors
 - MDB texture flag controls and post-export flag patching
 - Main-step and sub-step workflow highlighting for guided user progress
 

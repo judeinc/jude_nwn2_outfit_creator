@@ -1088,13 +1088,9 @@ class NWN2_OT_Step3_Done(bpy.types.Operator):
         profile = nwn2_profile(context, arm_obj)
         donor_names = [profile["body"], profile["boots"], profile["gloves"]]
         if prefer_robe_references and profile.get("robe_body"):
-            robe_donor_names = [profile["robe_body"], profile["boots"], profile["gloves"]]
-            robe_reference_donors = [
-                obj for obj in (bpy.data.objects.get(name) for name in robe_donor_names)
-                if obj and obj.type == 'MESH' and obj.vertex_groups
-            ]
-            if any(obj.name == profile["robe_body"] for obj in robe_reference_donors):
-                return robe_reference_donors
+            robe_obj = bpy.data.objects.get(profile["robe_body"])
+            if robe_obj and robe_obj.type == 'MESH' and robe_obj.vertex_groups:
+                return [robe_obj]
 
         reference_donors = [
             obj for obj in (bpy.data.objects.get(name) for name in donor_names)
