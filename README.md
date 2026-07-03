@@ -93,6 +93,10 @@ The add-on uses a modular profile registry so additional NWN2 body profiles can 
 - Removed boots and gloves from the robe-mode donor set so unwanted boot,
   ankle, or foot weights are not introduced into robe/dress outfits.
 - Kept the normal non-robe weighting path unchanged.
+- Removed `LArm0Palm` and `RArm1Palm` from the reduced `Ai_Rig` used for
+  fitting and weight transfer across all supported body profiles.
+- Cleaned reused `Ai_Rig` objects and fitted donor meshes so palm bones and
+  palm vertex groups cannot carry forward into new outfit weights.
 
 ## Installation
 

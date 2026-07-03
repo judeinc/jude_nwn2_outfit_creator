@@ -24,6 +24,8 @@
 - Batch Export Repository with preflight checks and one-folder-per-outfit output
 - Robe/dress donor weighting for HHM and HHF profiles
 - v1.3.0A robe mode uses only the robe donor mesh, not boots/gloves donors
+- v1.3.0A reduced Ai_Rig excludes palm bones and cleans palm vertex groups from
+  fitted donors
 - MDB texture flag controls and post-export flag patching
 - Main-step and sub-step workflow highlighting for guided user progress
 

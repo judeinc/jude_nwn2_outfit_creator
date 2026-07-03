@@ -78,6 +78,43 @@ NWN2_BODY_PROFILES = {
 }
 
 
+NWN2_AI_RIG_EXCLUDED_BONES = frozenset({
+    "LArm0Palm",
+    "RArm1Palm",
+})
+
+
+NWN2_AI_RIG_BODY_BONES = frozenset({
+    "LLeg1", "LLeg2", "RLeg1", "RLeg2", "Spine", "Ribcage",
+    "LArm0CollarBone", "LArm010", "LArm011", "LArm02",
+    "RArm1CollarBone", "RArm110", "RArm111", "RArm12",
+    "Neck", "RLegAnkle", "LLegAnkle", "RLegAnkleDigit011", "LLegAnkleDigit011",
+})
+
+
+NWN2_ARM_FIT_BONES = frozenset({
+    "RArm110", "RArm111", "RArm12",
+    "LArm010", "LArm011", "LArm02",
+})
+
+
+NWN2_LEFT_ARM_FIT_BONES = frozenset({"LArm010", "LArm011", "LArm02"})
+NWN2_RIGHT_ARM_FIT_BONES = frozenset({"RArm110", "RArm111", "RArm12"})
+
+
+NWN2_STEP4_ADJUSTMENT_BONES = frozenset({
+    "RArm110", "LArm010", "RArm111", "LArm011", "RArm12", "LArm02",
+    "RLeg1", "LLeg1", "RLeg2", "LLeg2", "RLegAnkle", "LLegAnkle",
+})
+
+
+def nwn2_ai_rig_bones_to_keep(root_bone_name):
+    keep = set(NWN2_AI_RIG_BODY_BONES)
+    if root_bone_name:
+        keep.add(root_bone_name)
+    return keep - NWN2_AI_RIG_EXCLUDED_BONES
+
+
 NWN2_PROFILE_SHAPE_PRESETS = {
     "OOM": {
         "label": "Half-Orc Male (OOM)",
@@ -562,6 +599,43 @@ def nwn2_ensure_ai_rig_modifier(mesh_obj, ai_rig):
     return arm_mod
 
 
+def nwn2_prune_ai_rig_bones(context, ai_rig, root_bone_name=None):
+    if not ai_rig or ai_rig.type != 'ARMATURE':
+        return False
+
+    keep_bones = nwn2_ai_rig_bones_to_keep(
+        root_bone_name or ai_rig.get("nwn2_source_skeleton") or ai_rig.name
+    )
+    remove_names = [
+        bone.name
+        for bone in ai_rig.data.bones
+        if bone.name not in keep_bones
+    ]
+    if not remove_names:
+        return False
+
+    if context.mode != 'OBJECT':
+        try:
+            bpy.ops.object.mode_set(mode='OBJECT')
+        except Exception:
+            pass
+
+    bpy.ops.object.select_all(action='DESELECT')
+    ai_rig.hide_viewport = False
+    ai_rig.hide_set(False)
+    ai_rig.select_set(True)
+    context.view_layer.objects.active = ai_rig
+    bpy.ops.object.mode_set(mode='EDIT')
+
+    for bone_name in remove_names:
+        bone = ai_rig.data.edit_bones.get(bone_name)
+        if bone:
+            ai_rig.data.edit_bones.remove(bone)
+
+    bpy.ops.object.mode_set(mode='OBJECT')
+    return True
+
+
 def nwn2_prepare_step4_fitted_pair(mesh_obj, ai_rig, reset_base=False):
     if not mesh_obj or not ai_rig:
         return
@@ -809,23 +883,7 @@ class NWN2_OT_Step2_PrepareToRig(bpy.types.Operator):
             nwn2_stamp_profile(ai_rig, context, profile_key)
             ai_rig["nwn2_source_skeleton"] = profile["skeleton"]
 
-            BONES_TO_KEEP = {
-                profile["skeleton"],
-                "LLeg1", "LLeg2", "RLeg1", "RLeg2", "Spine", "Ribcage",
-                "LArm0CollarBone", "LArm010", "LArm011", "LArm02", "LArm0Palm",
-                "RArm1CollarBone", "RArm110", "RArm111", "RArm12", "RArm1Palm",
-                "Neck", "RLegAnkle", "LLegAnkle", "RLegAnkleDigit011", "LLegAnkleDigit011",
-            }
-
-            bpy.ops.object.select_all(action='DESELECT')
-            ai_rig.select_set(True)
-            context.view_layer.objects.active = ai_rig
-            bpy.ops.object.mode_set(mode='EDIT')
-
-            for bone in [b for b in ai_rig.data.edit_bones if b.name not in BONES_TO_KEEP]:
-                ai_rig.data.edit_bones.remove(bone)
-
-            bpy.ops.object.mode_set(mode='OBJECT')
+            nwn2_prune_ai_rig_bones(context, ai_rig, profile["skeleton"])
             bpy.ops.object.mode_set(mode='EDIT')
 
             larm02 = ai_rig.data.edit_bones.get("LArm02")
@@ -835,6 +893,7 @@ class NWN2_OT_Step2_PrepareToRig(bpy.types.Operator):
                 larm02.tail = larm02.head + direction * rarm12.length
 
             bpy.ops.object.mode_set(mode='OBJECT')
+        nwn2_prune_ai_rig_bones(context, ai_rig, profile["skeleton"])
 
         ARM_BONES  = {"RArm110", "LArm010"}
         LEG_BONES  = {"RLeg1", "LLeg1"}
@@ -1523,11 +1582,6 @@ class NWN2_OT_Step4_Finalize(bpy.types.Operator):
         pose_snapshot_str = context.scene.nwn2_pose_snapshot
         if pose_snapshot_str:
             pose_snapshot = json.loads(pose_snapshot_str)
-            ADJUSTMENT_BONES = {
-                "RArm110", "LArm010", "RArm111", "LArm011",
-                "RArm12", "LArm02", "RArm1Palm", "LArm0Palm",
-                "RLeg1", "LLeg1", "RLeg2", "LLeg2", "RLegAnkle", "LLegAnkle",
-            }
 
             bpy.ops.object.select_all(action='DESELECT')
             ai_rig.select_set(True)
@@ -1535,7 +1589,7 @@ class NWN2_OT_Step4_Finalize(bpy.types.Operator):
             bpy.ops.object.mode_set(mode='POSE')
 
             for pbone in ai_rig.pose.bones:
-                if pbone.name not in ADJUSTMENT_BONES or pbone.name not in pose_snapshot:
+                if pbone.name not in NWN2_STEP4_ADJUSTMENT_BONES or pbone.name not in pose_snapshot:
                     continue
                 snap = pose_snapshot[pbone.name]
                 pbone.rotation_mode = snap["rotation_mode"]
@@ -1832,9 +1886,8 @@ class NWN2_OT_Step5_FinalFitting(bpy.types.Operator):
         context.scene.nwn2_step5_snapshot = json.dumps(step5_snapshot)
 
         bpy.ops.pose.select_all(action='DESELECT')
-        ARM_BONES = {"RArm110", "RArm111", "RArm12", "RArm1Palm", "LArm010", "LArm011", "LArm02", "LArm0Palm"}
         for pbone in ai_rig.pose.bones:
-            if pbone.name in ARM_BONES:
+            if pbone.name in NWN2_ARM_FIT_BONES:
                 pbone.select = True
 
         context.scene.transform_orientation_slots[0].type = 'NORMAL'
@@ -2017,9 +2070,8 @@ class NWN2_OT_Step5_ActionA(bpy.types.Operator):
                         break
 
         bpy.ops.pose.select_all(action='DESELECT')
-        ARM_BONES = {"RArm110", "RArm111", "RArm12", "RArm1Palm", "LArm010", "LArm011", "LArm02", "LArm0Palm"}
         for pbone in ai_rig.pose.bones:
-            if pbone.name in ARM_BONES:
+            if pbone.name in NWN2_ARM_FIT_BONES:
                 pbone.select = True
 
         context.scene.transform_orientation_slots[0].type = 'NORMAL'
@@ -2069,11 +2121,9 @@ class NWN2_OT_Step5_ActionB(bpy.types.Operator):
                     bpy.ops.object.mode_set(mode='OBJECT')
                 bpy.ops.object.mode_set(mode='POSE')
 
-        ARM_BONES = {"RArm110", "RArm111", "RArm12", "RArm1Palm", "LArm010", "LArm011", "LArm02", "LArm0Palm"}
-
         bpy.ops.pose.select_all(action='SELECT')
         for pbone in ai_rig.pose.bones:
-            if pbone.name in ARM_BONES:
+            if pbone.name in NWN2_ARM_FIT_BONES:
                 pbone.select = False
 
         for area in context.screen.areas:
@@ -2086,7 +2136,7 @@ class NWN2_OT_Step5_ActionB(bpy.types.Operator):
 
         bpy.ops.pose.select_all(action='DESELECT')
         for pbone in ai_rig.pose.bones:
-            if pbone.name in ARM_BONES:
+            if pbone.name in NWN2_ARM_FIT_BONES:
                 pbone.select = True
 
         for area in context.screen.areas:
@@ -2134,8 +2184,6 @@ class NWN2_OT_Step5_ActionC_Left(bpy.types.Operator):
                     bpy.ops.object.mode_set(mode='OBJECT')
                 bpy.ops.object.mode_set(mode='POSE')
 
-        LEFT_ARM = {"LArm010", "LArm011", "LArm02", "LArm0Palm"}
-
         for area in context.screen.areas:
             if area.type == 'VIEW_3D':
                 for region in area.regions:
@@ -2146,7 +2194,7 @@ class NWN2_OT_Step5_ActionC_Left(bpy.types.Operator):
 
         bpy.ops.pose.select_all(action='SELECT')
         for pbone in ai_rig.pose.bones:
-            if pbone.name in LEFT_ARM:
+            if pbone.name in NWN2_LEFT_ARM_FIT_BONES:
                 pbone.select = False
 
         for area in context.screen.areas:
@@ -2159,7 +2207,7 @@ class NWN2_OT_Step5_ActionC_Left(bpy.types.Operator):
 
         bpy.ops.pose.select_all(action='DESELECT')
         for pbone in ai_rig.pose.bones:
-            if pbone.name in LEFT_ARM:
+            if pbone.name in NWN2_LEFT_ARM_FIT_BONES:
                 pbone.select = True
 
         for area in context.screen.areas:
@@ -2207,8 +2255,6 @@ class NWN2_OT_Step5_ActionC_Right(bpy.types.Operator):
                     bpy.ops.object.mode_set(mode='OBJECT')
                 bpy.ops.object.mode_set(mode='POSE')
 
-        RIGHT_ARM = {"RArm110", "RArm111", "RArm12", "RArm1Palm"}
-
         for area in context.screen.areas:
             if area.type == 'VIEW_3D':
                 for region in area.regions:
@@ -2219,7 +2265,7 @@ class NWN2_OT_Step5_ActionC_Right(bpy.types.Operator):
 
         bpy.ops.pose.select_all(action='SELECT')
         for pbone in ai_rig.pose.bones:
-            if pbone.name in RIGHT_ARM:
+            if pbone.name in NWN2_RIGHT_ARM_FIT_BONES:
                 pbone.select = False
 
         for area in context.screen.areas:
@@ -2232,7 +2278,7 @@ class NWN2_OT_Step5_ActionC_Right(bpy.types.Operator):
 
         bpy.ops.pose.select_all(action='DESELECT')
         for pbone in ai_rig.pose.bones:
-            if pbone.name in RIGHT_ARM:
+            if pbone.name in NWN2_RIGHT_ARM_FIT_BONES:
                 pbone.select = True
 
         for area in context.screen.areas:
